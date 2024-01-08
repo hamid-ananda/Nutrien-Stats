@@ -1,0 +1,157 @@
+# Load necessary libraries
+library(openxlsx)  # For working with Excel files
+library(readxl)    # For reading Excel files
+library(tidyverse) # For data manipulation and visualization
+library(dplyr)     # For data manipulation
+library(tidyr)     # For data manipulation
+
+# Load the workbook and select the relevant sheets
+workbook <- loadWorkbook("dataset/nutrien.xlsx")
+sheetNames <- getSheetNames("dataset/nutrien.xlsx")
+sheetNames
+
+segmentSummary <- read.xlsx(workbook, sheet = "Segment Summary (Q)")
+incomeStatement <- read.xlsx(workbook, sheet = "Income Statement (Q)")
+
+# Extract specific rows and columns for quarters, potash, nitrogen, phosphate, and net earnings
+quarters <- segmentSummary %>%
+  slice(1:1) %>% 
+  select(Q1.18:Q3.23)
+
+potash <- segmentSummary %>%
+  slice(27:27) %>%
+  select(Q1.18:Q3.23)
+potash <- as.integer(potash)
+
+nitrogen <- segmentSummary %>%
+  slice(46:46) %>%
+  select(Q1.18:Q3.23)
+nitrogen <- as.integer(nitrogen)
+
+phosphate <- segmentSummary %>%
+  slice(65:65) %>%
+  select(Q1.18:Q3.23)
+phosphate <- as.integer(phosphate)
+
+netEarning <- incomeStatement %>%
+  slice(20:20) %>%
+  select(Q1.18:Q3.23)
+netEarning <- as.integer(netEarning)
+
+# Combine extracted data into a single data frame
+fertilizerQuarterlyData <- rbind(quarters, potash, nitrogen, phosphate, netEarning)
+rownames(fertilizerQuarterlyData)[which(rownames(fertilizerQuarterlyData) == "1")] <- "Quarters"
+rownames(fertilizerQuarterlyData)[which(rownames(fertilizerQuarterlyData) == "2")] <- "Potash"
+rownames(fertilizerQuarterlyData)[which(rownames(fertilizerQuarterlyData) == "3")] <- "Nitrogen"
+rownames(fertilizerQuarterlyData)[which(rownames(fertilizerQuarterlyData) == "4")] <- "Phosphate"
+rownames(fertilizerQuarterlyData)[which(rownames(fertilizerQuarterlyData) == "5")] <- "Net_Earning"
+
+# Prepare the data for plotting
+fertilizerQuarterlyDataFlipped <- t(fertilizerQuarterlyData)
+fertilizerQuarterlyDataFlipped <- as.data.frame(fertilizerQuarterlyDataFlipped)
+
+# Convert Quarters to date format and rename columns
+fertilizerQuarterlyDataFlipped$Quarters <- as.Date(fertilizerQuarterlyDataFlipped$Quarters, format="%m/%d/%Y")
+fertilizerQuarterlyDataFlipped$Quarters <- format(fertilizerQuarterlyDataFlipped$Quarters, "%Y-%m")
+# Convert data types
+fertilizerQuarterlyDataFlipped$Potash <- as.integer(fertilizerQuarterlyDataFlipped$Potash)
+fertilizerQuarterlyDataFlipped$Nitrogen <- as.integer(fertilizerQuarterlyDataFlipped$Nitrogen)
+fertilizerQuarterlyDataFlipped$Phosphate <- as.integer(fertilizerQuarterlyDataFlipped$Phosphate)
+fertilizerQuarterlyDataFlipped$Net_Earning <- as.integer(fertilizerQuarterlyDataFlipped$Net_Earning)
+
+# Prepare data for plotting - pivot longer
+fertilizerQuarterlyDataFlippedMerged <- pivot_longer(fertilizerQuarterlyDataFlipped, cols = c("Potash","Nitrogen","Phosphate"), names_to= "Fertilizer", values_to =  "Sales" )
+
+# Create a bar chart
+barChart <- ggplot()
+barChart <- barChart + geom_col(data = fertilizerQuarterlyDataFlippedMerged, aes(x = Quarters, y = Sales, fill= Fertilizer ), position =  "dodge" ) +
+  labs(x = "Quarters", y = "Net Sales (millions)") +
+  scale_y_continuous(
+    breaks = seq(0, 3000, by = 200),  # Custom breaks at 0, 500, 1000, 1500, 2000, 2500, 3000
+  )
+barChart
+
+# Create a line graph with highlighted points
+lineGraph <- ggplot()
+lineGraph <- ggplot(fertilizerQuarterlyDataFlippedMerged, aes(x = Quarters, y = Net_Earning, group=1)) +
+  geom_line() +  # Specify the type of plot (in this case, a line plot)
+  geom_point() + # Add points for each data point
+  labs(x = "Quarters", y = "Net Earnings", title = "Net Earnings Over Quarters") +  # Label axes and title
+  theme_minimal() + # Set a minimal theme (you can choose a different theme based on your preference)
+  scale_y_continuous(
+    breaks = seq(-1200, 3500, by = 100),  # Custom breaks at 0, 500, 1000, 1500, 2000, 2500, 3000
+  )
+lineGraph  # Display the plot
+
+# Find max and min points
+max_point <- fertilizerQuarterlyDataFlippedMerged[which.max(fertilizerQuarterlyDataFlippedMerged$Net_Earning), ]
+min_point <- fertilizerQuarterlyDataFlippedMerged[which.min(fertilizerQuarterlyDataFlippedMerged$Net_Earning), ]
+
+# Extract quarters for max and min points
+max_quarter <- max_point$Quarters
+min_quarter <- min_point$Quarters
+
+# Highlight max and min points on the line graph
+lineGraph +
+  geom_point(data = rbind(max_point, min_point), aes(x = Quarters, y = Net_Earning, color = c("Max", "Min")), size = 3) +
+  scale_color_manual(values = c(Max = "green", Min = "red")) +
+  geom_text(data = rbind(max_point, min_point), aes(x = Quarters, y = Net_Earning, label = Net_Earning),
+            vjust = ifelse(max_point$Net_Earning > min_point$Net_Earning, -0.5, 1.5), hjust = ifelse(max_point$Net_Earning > min_point$Net_Earning, 1.5, -0.5), size = 3, color = c("green", "red")) +
+  guides(color = FALSE)  # Hide the legend for the annotations
+
+
+# Calculate and display statistical information for Net Earnings
+averageNetEarnings <- mean(netEarning)
+cat("The mean Net Earning is", averageNetEarnings, "millions", "\n")
+
+maxNetEarning <- max(netEarning)
+maxEarningColumnIndex <- which(fertilizerQuarterlyData[5, ] == maxNetEarning)
+maxSalesQuarterEarning <- fertilizerQuarterlyData[1, maxEarningColumnIndex]
+cat("Maximun Net Earning was" , maxNetEarning , " millions, and the Earning Quarter is" , maxSalesQuarterEarning, "\n" )
+
+minNetEarning <- min(netEarning)
+minEarningColumnIndex <- which(fertilizerQuarterlyData[5, ] == minNetEarning)
+minSalesQuarterEarning <- fertilizerQuarterlyData[1, minEarningColumnIndex]
+cat("Minimun Net Earning was" , minNetEarning , " millions, and the Earning Quarter is" , minSalesQuarterEarning, "\n" )
+
+# Calculate and display statistical information for Potash sales
+averagePotashSales <- mean(potash)
+cat("The mean Potash sales is", averagePotashSales, "millions", "\n")
+
+maxPotashSale <- max(potash)
+maxPotashColumnIndex <- which(fertilizerQuarterlyData[2, ] == maxPotashSale)
+maxSalesQuarterPotash <- fertilizerQuarterlyData[1, maxPotashColumnIndex]
+cat("Maximun Potash sale was" , maxPotashSale , " millions, and the Production Quarter is" , maxSalesQuarterPotash, "\n" )
+
+minPotashSale <- min(potash)
+minPotashColumnIndex <- which(fertilizerQuarterlyData[2, ] == minPotashSale)
+minSalesQuarterPotash <- fertilizerQuarterlyData[1, minPotashColumnIndex]
+cat("Minimun Potash sale was" , minPotashSale , " millions, and the Production Quarter is" , minSalesQuarterPotash, "\n")
+
+# Calculate and display statistical information for Nitrogen sales
+averageNitrogenSales <- mean(nitrogen)
+cat("The mean Nitrogen sales is", averageNitrogenSales, "millions", "\n")
+
+maxNitrogenSale <- max(nitrogen)
+maxNitrogenColumnIndex <- which(fertilizerQuarterlyData[3, ] == maxNitrogenSale)
+salesQuarterNitrogen <- fertilizerQuarterlyData[1, maxNitrogenColumnIndex]
+cat("Maximun Nitrogen sale was" , maxNitrogenSale , " millions, and the Production Quarter is" , salesQuarterNitrogen, "\n" )
+
+minNitrogenSale <- min(nitrogen)
+minmaxNitrogenColumnIndex <- which(fertilizerQuarterlyData[3, ] == minNitrogenSale)
+minSalesQuarterNitrogen <- fertilizerQuarterlyData[1, minmaxNitrogenColumnIndex]
+cat("Minimun Nitrogen sale was" , minNitrogenSale , " millions, and the Production Quarter is" , minSalesQuarterNitrogen, "\n" )
+
+# Calculate and display statistical information for Phosphate sales
+averagePhosphateSales <- mean(phosphate)
+cat("The mean Phosphate sales is", averagePhosphateSales, "millions", "\n")
+
+maxPhosphateSale <- max(phosphate)
+maxPhosphateColumnIndex <- which(fertilizerQuarterlyData[4, ] == maxPhosphateSale)
+salesQuarterPhosphate <- fertilizerQuarterlyData[1, maxPhosphateColumnIndex]
+cat("Maximun Phosphate sale was" , maxPhosphateSale , " millions, and the Production Quarter is" , salesQuarterPhosphate, "\n" )
+
+minPhosphateSale <- min(phosphate)
+minmaxPhosphateColumnIndex <- which(fertilizerQuarterlyData[4, ] == minPhosphateSale)
+minSalesQuarterPhosphate <- fertilizerQuarterlyData[1, minmaxPhosphateColumnIndex]
+cat("Minimun Phosphate sale was" , minPhosphateSale , " millions, and the Production Quarter is" , minSalesQuarterPhosphate, "\n" )
